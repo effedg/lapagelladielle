@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>Le guide di Lola</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght=500;700&family=Space+Grotesk:wght=400;500;600;700&display=swap');
 
 :root{
   --board: #1F3B33;
@@ -320,8 +320,8 @@ button:active{transform:scale(0.96);}
     <div class="polaroid-zone">
       <label class="polaroid" id="polaroidLabel">
         <div class="tape"></div>
-        <img id="photoImg" src="lolallaguida.jpg" alt="Foto" onerror="this.style.display='none'; document.getElementById('photoFallback').style.display='flex';">
-        <div id="photoFallback" style="display:none;width:100%;height:170px;align-items:center;justify-content:center;background:#e9e4d5;color:#8a8267;font-family:'Space Grotesk',sans-serif;font-size:12px;text-align:center;padding:10px;">metti foto.jpg accanto al file<br>o toccami per caricarla</div>
+        <img id="photoImg" src="https://raw.githubusercontent.com/effedg/lapagelladielle/main/lolallaguida.jpg" alt="Foto" onerror="this.style.display='none'; document.getElementById('photoFallback').style.display='flex';">
+        <div id="photoFallback" style="display:none;width:100%;height:170px;align-items:center;justify-content:center;background:#e9e4d5;color:#8a8267;font-family:'Space Grotesk',sans-serif;font-size:12px;text-align:center;padding:10px;">Impossibile caricare l'immagine<br>tocca per caricarne una nuova</div>
         <div class="cap">Foto del giorno</div>
         <div class="edit-hint">tocca per cambiare</div>
         <input type="file" id="photoInput" accept="image/*">
@@ -336,7 +336,7 @@ button:active{transform:scale(0.96);}
         <div class="num" id="avgNum">–</div>
         <div class="lbl">media</div>
       </div>
-      <div class="avg-text" id="avgText">Aggiungi la prima lezione per iniziare la pagella.</div>
+      <div class="avg-text" id="avgText">Caricamento dati condivisi...</div>
     </div>
 
     <div class="form-row">
@@ -374,11 +374,15 @@ button:active{transform:scale(0.96);}
     <div class="medals" id="medalsRow"></div>
   </div>
 
-  <div class="footer-note">I dati restano salvati su questo dispositivo · Le guide di Lola</div>
+  <div class="footer-note">I dati sono sincronizzati globalmente online · Le guide di Lola</div>
 </div>
 
 <script>
-const DEFAULT_PHOTO = "foto.jpg";
+const DEFAULT_PHOTO = "https://raw.githubusercontent.com/effedg/lapagelladielle/main/lolallaguida.jpg";
+
+// Endpoint pubblico e gratuito di test per sincronizzare i dati di tutti gli utenti (usiamo KVdb.io)
+// Nota: questa "bucket" pubblica è fantastica per i test. Se l'app diventa molto trafficata, conviene usare un database dedicato.
+const API_URL = "https://kvdb.io/MN7SgXGZby7g9Y2p5T9WkW/lola-pagella-shared-state";
 
 let state = {
   lessons: [],
@@ -388,24 +392,28 @@ let state = {
 
 async function loadState(){
   try{
-    const r = await window.storage.get('lola-pagella-data', false);
-    if(r && r.value){
-      const parsed = JSON.parse(r.value);
+    const response = await fetch(API_URL);
+    if(response.ok) {
+      const parsed = await response.json();
       state.lessons = parsed.lessons || [];
       state.minutes = parsed.minutes || 0;
       state.photo = parsed.photo || DEFAULT_PHOTO;
     }
   }catch(e){
-    console.log('Nessun dato salvato precedente, parto da zero.', e);
+    console.log('Nessun dato online o errore di rete, uso lo stato vuoto.', e);
   }
   render();
 }
 
 async function saveState(){
   try{
-    await window.storage.set('lola-pagella-data', JSON.stringify(state), false);
+    await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify(state),
+      headers: { 'Content-Type': 'application/json' }
+    });
   }catch(e){
-    console.error('Errore nel salvataggio:', e);
+    console.error('Errore nel salvataggio remoto:', e);
   }
 }
 
@@ -425,9 +433,11 @@ function render(){
   // photo
   const photoImg = document.getElementById('photoImg');
   const photoFallback = document.getElementById('photoFallback');
-  photoImg.style.display = '';
-  photoFallback.style.display = 'none';
-  photoImg.src = state.photo;
+  if(state.photo) {
+    photoImg.style.display = '';
+    photoFallback.style.display = 'none';
+    photoImg.src = state.photo;
+  }
 
   // lessons sorted by date desc
   const sorted = [...state.lessons].sort((a,b)=> b.date.localeCompare(a.date));
@@ -499,16 +509,16 @@ document.getElementById('addLessonBtn').addEventListener('click', async ()=>{
   if(isNaN(grade) || grade < 1 || grade > 10){ gradeInput.focus(); return; }
   state.lessons.push({ id: Date.now().toString(), date, grade });
   gradeInput.value = '';
-  await saveState();
   render();
+  await saveState();
 });
 
 document.getElementById('lessonsList').addEventListener('click', async (e)=>{
   if(e.target.classList.contains('lesson-del')){
     const id = e.target.dataset.id;
     state.lessons = state.lessons.filter(l=>l.id !== id);
-    await saveState();
     render();
+    await saveState();
   }
 });
 
@@ -520,8 +530,8 @@ document.getElementById('addMinutesBtn').addEventListener('click', async ()=>{
   state.minutes += val;
   const after = Math.floor(state.minutes/30);
   minutesInput.value = '';
-  await saveState();
   render();
+  await saveState();
   if(after > before){
     const row = document.getElementById('medalsRow');
     row.style.transform = 'scale(1.04)';
@@ -531,8 +541,8 @@ document.getElementById('addMinutesBtn').addEventListener('click', async ()=>{
 
 document.getElementById('resetTimeBtn').addEventListener('click', async ()=>{
   state.minutes = 0;
-  await saveState();
   render();
+  await saveState();
 });
 
 document.getElementById('photoInput').addEventListener('change', (e)=>{
@@ -541,8 +551,8 @@ document.getElementById('photoInput').addEventListener('change', (e)=>{
   const reader = new FileReader();
   reader.onload = async (ev)=>{
     state.photo = ev.target.result;
-    await saveState();
     render();
+    await saveState();
   };
   reader.readAsDataURL(file);
 });
@@ -550,7 +560,11 @@ document.getElementById('photoInput').addEventListener('change', (e)=>{
 // set default date to today
 document.getElementById('dateInput').value = new Date().toISOString().slice(0,10);
 
+// Carica lo stato condiviso all'avvio
 loadState();
+
+// Aggiorna automaticamente i dati ogni 10 secondi per vedere i cambi degli altri utenti in tempo reale
+setInterval(loadState, 10000);
 </script>
 </body>
 </html>
